@@ -27,6 +27,12 @@ class InteractiveMapWidget extends ConsumerStatefulWidget {
   
   /// Whether this is scan mode (affects route coloring)
   final bool isScanMode;
+  
+  /// Whether this is a completed journey view (draws entire path in green)
+  final bool isCompletedJourney;
+  
+  /// This is preserved across reroutes to show the full path taken
+
 
   const InteractiveMapWidget({
     super.key,
@@ -37,6 +43,7 @@ class InteractiveMapWidget extends ConsumerStatefulWidget {
     this.onLocationTapped,
     this.showLocationLabels = true,
     this.isScanMode = false,
+    this.isCompletedJourney = false,
   });
 
   @override
@@ -56,15 +63,15 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
   // Animation controllers for smooth transitions
   late AnimationController _positionAnimationController;
   late AnimationController _routeAnimationController;
-  
-  // Track previous state for smooth transitions
-  String? _previousCurrentLocationId;
-  nav_route.Route? _previousActiveRoute;
+  late AnimationController _pulsingAnimationController;
   
   // Real-time update flags
   bool _isAnimatingToLocation = false;
   bool _isAnimatingRoute = false;
   
+  // Flag to ensure we only set the initial view once
+  bool _hasSetInitialView = false;
+
   // Location coordinates matching the map image (pixel coordinates)
   final Map<String, Offset> _locationCoordinates = {
     // Main Rooms (selectable)
@@ -110,9 +117,18 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
       vsync: this,
     );
     
-    // Store initial state
-    _previousCurrentLocationId = widget.currentLocationId;
-    _previousActiveRoute = widget.activeRoute;
+    _pulsingAnimationController = AnimationController(
+      duration: const Duration(milliseconds: 1500),
+      vsync: this,
+    );
+    
+    // Start the pulsing animation for current location marker
+    _startPulsingAnimation();
+  }
+
+  /// Start the pulsing animation loop for current location marker
+  void _startPulsingAnimation() {
+    _pulsingAnimationController.repeat();
   }
 
   @override
@@ -129,9 +145,6 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
       _handleActiveRouteChange(oldWidget.activeRoute, widget.activeRoute);
     }
     
-    // Update previous state tracking
-    _previousCurrentLocationId = widget.currentLocationId;
-    _previousActiveRoute = widget.activeRoute;
   }
 
   /// Handle real-time current location changes with smooth animations
@@ -237,13 +250,36 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
+        // Calculate the scale required to fit the entire map on screen
+        final double scaleX = constraints.maxWidth / mapImageWidth;
+        final double scaleY = constraints.maxHeight / mapImageHeight;
+        final double fitScale = min(scaleX, scaleY);
+
+        // Initialize the view to fit the map if not already done
+        if (!_hasSetInitialView) {
+          _hasSetInitialView = true;
+          
+          // Calculate centering offsets
+          final double offsetX = (constraints.maxWidth - mapImageWidth * fitScale) / 2;
+          final double offsetY = (constraints.maxHeight - mapImageHeight * fitScale) / 2;
+
+          _transformationController.value = Matrix4.identity()
+            ..setTranslationRaw(offsetX, offsetY, 0.0)
+            // ignore: deprecated_member_use
+            ..scale(fitScale, fitScale, 1.0);
+        }
+
         return SizedBox(
           width: constraints.maxWidth,
           height: constraints.maxHeight,
           child: InteractiveViewer(
             transformationController: _transformationController,
-            minScale: 0.5,
+            // Allow zooming out enough to see the whole map (fitScale)
+            // We use a slightly lower value (0.1) to be safe on very small screens
+            minScale: 0.1,
             maxScale: 4.0,
+            // Allow panning beyond the map edges for better usability
+            boundaryMargin: const EdgeInsets.all(double.infinity),
             constrained: false,
             child: SizedBox(
               width: mapImageWidth,
@@ -276,9 +312,11 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
                         painter: RoutePathPainter(
                           route: widget.activeRoute!,
                           locationCoordinates: _locationCoordinates,
+                          allLocations: widget.locations,
                           currentLocationId: widget.currentLocationId,
                           primaryColor: Theme.of(context).colorScheme.primary,
                           isScanMode: widget.isScanMode,
+                          isCompletedJourney: widget.isCompletedJourney,
                         ),
                       ),
                     ),
@@ -300,8 +338,11 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
 
   /// Build a marker for a specific location
   Widget _buildLocationMarker(Location location) {
-    final coordinate = _locationCoordinates[location.id];
-    if (coordinate == null) return const SizedBox.shrink();
+    // First try to get coordinates from the hardcoded map for pixel-perfect positioning
+    Offset? coordinate = _locationCoordinates[location.id];
+    
+    // If not found in hardcoded map, convert from location coordinates
+    coordinate ??= _convertLocationCoordinatesToPixels(location.coordinates);
     
     final isCurrentLocation = location.id == widget.currentLocationId;
     final isDestination = location.id == widget.destinationLocationId;
@@ -313,15 +354,27 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
       markerChild = _buildPulsingCurrentLocationMarker(markerChild);
     }
     
+    // Increase touch target size for better mobile usability
+    // The map is often scaled down significantly on mobile screens
+    const double touchTargetSize = 80.0;
+    const double visibleSize = 40.0;
+
     return Positioned(
-      left: coordinate.dx - 20, // Center the 40px marker
-      top: coordinate.dy - 20,
+      left: coordinate.dx - (touchTargetSize / 2),
+      top: coordinate.dy - (touchTargetSize / 2),
       child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
         onTap: () => widget.onLocationTapped?.call(location),
         child: SizedBox(
-          width: 40,
-          height: 40,
-          child: markerChild,
+          width: touchTargetSize,
+          height: touchTargetSize,
+          child: Center(
+            child: SizedBox(
+              width: visibleSize,
+              height: visibleSize,
+              child: markerChild,
+            ),
+          ),
         ),
       ),
     );
@@ -330,7 +383,7 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
   /// Build pulsing animation for current location marker
   Widget _buildPulsingCurrentLocationMarker(Widget child) {
     return AnimatedBuilder(
-      animation: _positionAnimationController,
+      animation: _pulsingAnimationController,
       builder: (context, _) {
         return Stack(
           alignment: Alignment.center,
@@ -341,9 +394,9 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
               height: 60,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Colors.blue.withOpacity(0.3 * (1 - _positionAnimationController.value)),
+                color: Colors.blue.withValues(alpha: 0.3 * (1 - _pulsingAnimationController.value)),
                 border: Border.all(
-                  color: Colors.blue.withOpacity(0.5 * (1 - _positionAnimationController.value)),
+                  color: Colors.blue.withValues(alpha: 0.5 * (1 - _pulsingAnimationController.value)),
                   width: 2,
                 ),
               ),
@@ -356,14 +409,67 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
     );
   }
 
+  /// Convert location coordinates to pixel coordinates
+  Offset _convertLocationCoordinatesToPixels(Coordinates coordinates) {
+    // Convert lat/lng coordinates back to pixel coordinates
+    // This reverses the conversion done in the location repository
+    const double baseLatitude = 40.7128;
+    const double baseLongitude = -74.0060;
+    const double latScale = 0.0001;
+    const double lngScale = 0.0001;
+    
+    final double y = ((coordinates.latitude - baseLatitude) / latScale) * 1255.0;
+    final double x = ((coordinates.longitude - baseLongitude) / lngScale) * 1615.0;
+    
+    return Offset(x, y);
+  }
+
   /// Build a label for a specific location
   Widget _buildLocationLabel(Location location) {
-    final coordinate = _locationCoordinates[location.id];
-    if (coordinate == null) return const SizedBox.shrink();
+    // First try to get coordinates from the hardcoded map for pixel-perfect positioning
+    Offset? coordinate = _locationCoordinates[location.id];
     
-    // Don't show labels for checkpoints
-    if (location.id.startsWith('CP')) return const SizedBox.shrink();
+    // If not found in hardcoded map, convert from location coordinates
+    coordinate ??= _convertLocationCoordinatesToPixels(location.coordinates);
     
+    // Check if this is a checkpoint
+    final isCheckpoint = location.id.startsWith('CP');
+    
+    // For checkpoints, show a label with the full checkpoint name
+    if (isCheckpoint) {
+      return Positioned(
+        left: coordinate.dx - 50, // Center the wider label
+        top: coordinate.dy + 20, // Position below the marker
+        child: SizedBox(
+          width: 100,
+          height: 20,
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.orange.shade700),
+              ),
+              child: Text(
+                location.name, // Shows "Checkpoint 1", "Checkpoint 2", etc.
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontSize: 9,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    
+    // For regular locations, show the full name label
     return Positioned(
       left: coordinate.dx - 60, // Center the 120px label
       top: coordinate.dy + 25, // Position below the marker
@@ -375,7 +481,7 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(4),
               border: Border.all(color: Colors.grey.shade300),
             ),
@@ -421,7 +527,7 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -452,6 +558,8 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
         return Icons.wc;
       case LocationType.office:
         return Icons.business;
+      case LocationType.checkpoint:
+        return Icons.flag_circle;
     }
   }
 
@@ -460,7 +568,21 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
     final points = <Offset>[];
     
     for (final locationId in route.pathLocationIds) {
-      final coordinate = _locationCoordinates[locationId];
+      // First try hardcoded coordinates
+      Offset? coordinate = _locationCoordinates[locationId];
+      
+      // If not found, try to find the location and convert its coordinates
+      if (coordinate == null) {
+        try {
+          final location = widget.locations.firstWhere(
+            (loc) => loc.id == locationId,
+          );
+          coordinate = _convertLocationCoordinatesToPixels(location.coordinates);
+        } catch (e) {
+          // Location not found, coordinate remains null
+        }
+      }
+      
       if (coordinate != null) {
         points.add(coordinate);
       }
@@ -519,8 +641,9 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
           final translationY = translationYAnimation.value;
           
           _transformationController.value = Matrix4.identity()
-            ..translate(translationX, translationY)
-            ..scale(scale);
+            ..setTranslationRaw(translationX, translationY, 0.0)
+            // ignore: deprecated_member_use
+            ..scale(scale, scale, 1.0);
         }
       }
       
@@ -534,7 +657,21 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
 
   /// Public method to center map on a specific location with animation
   void centerOnLocation(String locationId) {
-    final coordinate = _locationCoordinates[locationId];
+    // First try hardcoded coordinates
+    Offset? coordinate = _locationCoordinates[locationId];
+    
+    // If not found, try to find the location and convert its coordinates
+    if (coordinate == null) {
+      try {
+        final location = widget.locations.firstWhere(
+          (loc) => loc.id == locationId,
+        );
+        coordinate = _convertLocationCoordinatesToPixels(location.coordinates);
+      } catch (e) {
+        // Location not found, coordinate remains null
+      }
+    }
+    
     if (coordinate != null) {
       _animateToPosition(coordinate, 2.0);
     }
@@ -544,11 +681,17 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
   void fitAllLocations() {
     if (widget.locations.isEmpty) return;
     
-    final coordinates = widget.locations
-        .map((loc) => _locationCoordinates[loc.id])
-        .where((coord) => coord != null)
-        .cast<Offset>()
-        .toList();
+    final coordinates = <Offset>[];
+    
+    for (final location in widget.locations) {
+      // First try hardcoded coordinates
+      Offset? coordinate = _locationCoordinates[location.id];
+      
+      // If not found, convert from location coordinates
+      coordinate ??= _convertLocationCoordinatesToPixels(location.coordinates);
+      
+      coordinates.add(coordinate);
+    }
     
     if (coordinates.isEmpty) return;
     
@@ -589,6 +732,7 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
 
   @override
   void dispose() {
+    _pulsingAnimationController.dispose();
     _positionAnimationController.dispose();
     _routeAnimationController.dispose();
     _transformationController.dispose();
@@ -600,24 +744,104 @@ class InteractiveMapWidgetState extends ConsumerState<InteractiveMapWidget>
 class RoutePathPainter extends CustomPainter {
   final nav_route.Route route;
   final Map<String, Offset> locationCoordinates;
+  final List<Location> allLocations;
   final String? currentLocationId;
   final Color primaryColor;
   final bool isScanMode;
+  final bool isCompletedJourney;
+  /// List of location IDs that have been traversed (preserved across reroutes)
 
   const RoutePathPainter({
     required this.route,
     required this.locationCoordinates,
+    required this.allLocations,
     this.currentLocationId,
     required this.primaryColor,
     this.isScanMode = false,
+    this.isCompletedJourney = false,
   });
+
+  /// Convert location coordinates to pixel coordinates
+  Offset _convertLocationCoordinatesToPixels(Coordinates coordinates) {
+    // Convert lat/lng coordinates back to pixel coordinates
+    // This reverses the conversion done in the location repository
+    const double baseLatitude = 40.7128;
+    const double baseLongitude = -74.0060;
+    const double latScale = 0.0001;
+    const double lngScale = 0.0001;
+    
+    final double y = ((coordinates.latitude - baseLatitude) / latScale) * 1255.0;
+    final double x = ((coordinates.longitude - baseLongitude) / lngScale) * 1615.0;
+    
+    return Offset(x, y);
+  }
+
+  /// Find the index of the next checkpoint after the given index in the route
+  int _findNextCheckpointIndex(int startIndex) {
+    for (int i = startIndex + 1; i < route.pathLocationIds.length; i++) {
+      final locId = route.pathLocationIds[i];
+      // A checkpoint is any location with ID starting with "CP" or the final destination
+      if (locId.startsWith('CP') || i == route.pathLocationIds.length - 1) {
+        return i;
+      }
+    }
+    return route.pathLocationIds.length - 1; // Return last index if no checkpoint found
+  }
+
+  /// Get coordinate for a location ID
+  Offset? _getCoordinateForLocation(String locationId) {
+    // First try hardcoded coordinates
+    Offset? coordinate = locationCoordinates[locationId];
+    
+    // If not found, try to find the location and convert its coordinates
+    if (coordinate == null) {
+      try {
+        final location = allLocations.firstWhere(
+          (loc) => loc.id == locationId,
+        );
+        coordinate = _convertLocationCoordinatesToPixels(location.coordinates);
+      } catch (e) {
+        // Location not found
+      }
+    }
+    
+    return coordinate;
+  }
+
+  /// Check if a segment (from -> to) is part of the traversed path
 
   @override
   void paint(Canvas canvas, Size size) {
+    // Paint definitions
+    final grayPaint = Paint()
+      ..color = Colors.grey.withValues(alpha: 0.5)
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    
+    final activePaint = Paint()
+      ..color = primaryColor
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+    
+    final completedPaint = Paint()
+      ..color = Colors.green
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    // FIRST: Draw the traversed path in green (if any)
+    // This is drawn first so the active route is drawn on top
+
+    // SECOND: Draw the active route
     final routePoints = <Offset>[];
     
     for (final locationId in route.pathLocationIds) {
-      final coordinate = locationCoordinates[locationId];
+      final coordinate = _getCoordinateForLocation(locationId);
       if (coordinate != null) {
         routePoints.add(coordinate);
       }
@@ -625,49 +849,60 @@ class RoutePathPainter extends CustomPainter {
     
     if (routePoints.length < 2) return;
     
-    // Draw checkpoints subtly
-    final checkpointPaint = Paint()
-      ..color = Colors.grey.withOpacity(0.5)
-      ..style = PaintingStyle.fill;
+    // Get current location index
+    final currentIndex = currentLocationId != null 
+        ? route.getLocationIndex(currentLocationId!) 
+        : 0;
     
-    for (final locationId in route.pathLocationIds) {
-      if (locationId.startsWith('CP')) {
-        final coord = locationCoordinates[locationId];
-        if (coord != null) {
-          canvas.drawCircle(coord, 4.0, checkpointPaint);
-        }
+    // For completed journeys, draw entire path in green
+    if (isCompletedJourney) {
+      for (int i = 0; i < routePoints.length - 1; i++) {
+        canvas.drawLine(routePoints[i], routePoints[i + 1], completedPaint);
       }
     }
     
-    // Draw main route line
-    final pathPaint = Paint()
-      ..color = primaryColor
-      ..strokeWidth = 6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..style = PaintingStyle.stroke;
-    
-    for (int i = 0; i < routePoints.length - 1; i++) {
-      canvas.drawLine(routePoints[i], routePoints[i + 1], pathPaint);
-    }
-    
-    // Draw progress indicator if we have current location
-    if (currentLocationId != null) {
-      final currentIndex = route.getLocationIndex(currentLocationId!);
-      if (currentIndex >= 0 && currentIndex < routePoints.length - 1) {
-        // Show completed portion in green
-        final completedPaint = Paint()
-          ..color = Colors.green
-          ..strokeWidth = 6
-          ..strokeCap = StrokeCap.round
-          ..strokeJoin = StrokeJoin.round
-          ..style = PaintingStyle.stroke;
+    // Only use progressive highlighting in scan mode
+    // In manual mode, draw the entire path in the primary color with green for completed
+    else if (isScanMode) {
+      // Find the next checkpoint index after current location
+      final nextCheckpointIndex = currentIndex >= 0 
+          ? _findNextCheckpointIndex(currentIndex) 
+          : _findNextCheckpointIndex(-1);
+      
+      // Draw each segment with appropriate color:
+      // - Green: Completed segments (before current position)
+      // - Primary (colored): Current segment (current to next checkpoint)
+      // - Gray: Future segments (after next checkpoint)
+      for (int i = 0; i < routePoints.length - 1; i++) {
+        Paint paintToUse;
         
-        for (int i = 0; i < currentIndex; i++) {
-          if (i + 1 < routePoints.length) {
-            canvas.drawLine(routePoints[i], routePoints[i + 1], completedPaint);
-          }
+        if (currentIndex >= 0 && i < currentIndex) {
+          // Completed segment (before current position) - draw in green
+          paintToUse = completedPaint;
+        } else if (i >= currentIndex && i < nextCheckpointIndex) {
+          // Active segment (current position to next checkpoint)
+          paintToUse = activePaint;
+        } else {
+          // Future segment (after next checkpoint) - draw in gray
+          paintToUse = grayPaint;
         }
+        
+        canvas.drawLine(routePoints[i], routePoints[i + 1], paintToUse);
+      }
+    } else {
+      // Manual mode: Draw entire path in primary color, completed in green
+      for (int i = 0; i < routePoints.length - 1; i++) {
+        Paint paintToUse;
+        
+        if (currentIndex >= 0 && i < currentIndex) {
+          // Completed segment (before current position)
+          paintToUse = completedPaint;
+        } else {
+          // Remaining path in primary color
+          paintToUse = activePaint;
+        }
+        
+        canvas.drawLine(routePoints[i], routePoints[i + 1], paintToUse);
       }
     }
     
@@ -678,15 +913,29 @@ class RoutePathPainter extends CustomPainter {
     
     for (final locationId in route.pathLocationIds) {
       if (!locationId.startsWith('CP')) {
-        final coord = locationCoordinates[locationId];
-        if (coord != null) {
+        // First try hardcoded coordinates
+        Offset? coord = locationCoordinates[locationId];
+        
+        // If not found, try to find the location and convert its coordinates
+        if (coord == null) {
+          try {
+            final location = allLocations.firstWhere(
+              (loc) => loc.id == locationId,
+            );
+            coord = _convertLocationCoordinatesToPixels(location.coordinates);
+            canvas.drawCircle(coord, 9.0, waypointPaint);
+          } catch (e) {
+            // Location not found, skip this waypoint
+          }
+        } else {
           canvas.drawCircle(coord, 9.0, waypointPaint);
         }
       }
     }
     
     // Draw start and end markers
-    if (routePoints.isNotEmpty) {
+    if (routePoints.isNotEmpty && routePoints.first.dx >= 20 && routePoints.first.dy >= 20 &&
+        routePoints.last.dx >= 20 && routePoints.last.dy >= 20) {
       final startPaint = Paint()
         ..color = Colors.green
         ..style = PaintingStyle.stroke
@@ -703,5 +952,12 @@ class RoutePathPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+  bool shouldRepaint(covariant RoutePathPainter oldDelegate) {
+    return route.id != oldDelegate.route.id ||
+           route.pathLocationIds.length != oldDelegate.route.pathLocationIds.length ||
+           currentLocationId != oldDelegate.currentLocationId ||
+           primaryColor != oldDelegate.primaryColor ||
+           isScanMode != oldDelegate.isScanMode ||
+           isCompletedJourney != oldDelegate.isCompletedJourney;
+}
 }

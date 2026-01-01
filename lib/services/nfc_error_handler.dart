@@ -34,15 +34,10 @@ class NFCError {
   String toString() => 'NFCError($type): $message';
 }
 
-
-void checkNFCAvailability() {
-}
-
 /// Service for handling NFC errors and providing fallback options
 class NFCErrorHandler {
-  final LocationRepository _locationRepository;
-  
-  NFCErrorHandler(this._locationRepository);
+  // ignore: avoid_unused_constructor_parameters
+  NFCErrorHandler(LocationRepository locationRepository);
 
   /// Convert various exceptions to structured NFC errors
   NFCError handleException(Exception exception) {

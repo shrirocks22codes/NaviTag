@@ -35,6 +35,12 @@ class NavigationSession {
   final String? errorMessage;
   final NavigationInstruction? currentInstruction;
   final int currentStepIndex;
+  final DateTime? navigationStartTime;
+  /// The original starting location when navigation began
+  final String? originalStartLocationId;
+  /// List of location IDs that have been traversed during navigation
+  /// This is preserved even when rerouting to show the green completed path
+  final List<String> traversedPath;
 
   const NavigationSession({
     this.currentLocationId,
@@ -44,6 +50,9 @@ class NavigationSession {
     this.errorMessage,
     this.currentInstruction,
     this.currentStepIndex = 0,
+    this.navigationStartTime,
+    this.originalStartLocationId,
+    this.traversedPath = const [],
   });
 
   /// Create a copy with updated fields
@@ -55,6 +64,9 @@ class NavigationSession {
     String? errorMessage,
     NavigationInstruction? currentInstruction,
     int? currentStepIndex,
+    DateTime? navigationStartTime,
+    String? originalStartLocationId,
+    List<String>? traversedPath,
   }) {
     return NavigationSession(
       currentLocationId: currentLocationId ?? this.currentLocationId,
@@ -64,7 +76,16 @@ class NavigationSession {
       errorMessage: errorMessage ?? this.errorMessage,
       currentInstruction: currentInstruction ?? this.currentInstruction,
       currentStepIndex: currentStepIndex ?? this.currentStepIndex,
+      navigationStartTime: navigationStartTime ?? this.navigationStartTime,
+      originalStartLocationId: originalStartLocationId ?? this.originalStartLocationId,
+      traversedPath: traversedPath ?? this.traversedPath,
     );
+  }
+
+  /// Get actual time taken for navigation
+  Duration? get actualTimeTaken {
+    if (navigationStartTime == null) return null;
+    return DateTime.now().difference(navigationStartTime!);
   }
 
   /// Clear error state
@@ -342,13 +363,15 @@ class NavigationController extends StateNotifier<NavigationSession> {
   Future<void> _handleNavigationUpdate(String newLocationId, String? previousLocationId) async {
     final route = state.activeRoute!;
     
-    // Check if the new location is on the planned route
-    if (route.containsLocation(newLocationId)) {
-      await _handleOnRouteUpdate(newLocationId, route);
-    } else {
-      // Route deviation detected - validate and handle appropriately
-      await _handleRouteDeviation(newLocationId, previousLocationId, route);
+    // Check if we've arrived at the destination
+    if (newLocationId == route.endLocationId) {
+      await _completeNavigation();
+      return;
     }
+    
+    // Always use the new path merging logic for consistent behavior
+    // This will handle both on-route and off-route scenarios
+    await calculateNewRouteFromCurrent();
   }
 
   /// Handle route deviation with comprehensive validation and rerouting
@@ -592,6 +615,7 @@ class NavigationController extends StateNotifier<NavigationSession> {
     // For now, we'll use a debug print that can be disabled in production
     assert(() {
       final routeType = isMinorReroute ? 'Minor reroute' : 'Full reroute';
+      // ignore: avoid_print
       print('$routeType: deviation at $deviationLocationId, '
             'new route distance: ${newRoute.estimatedDistance.toStringAsFixed(1)}m, '
             'estimated time: ${newRoute.estimatedTime.inMinutes}min');
@@ -662,10 +686,17 @@ class NavigationController extends StateNotifier<NavigationSession> {
         return;
       }
       
+      final previousLocationId = state.currentLocationId;
+      
       state = state.copyWith(
         currentLocationId: locationId,
         errorMessage: null,
       );
+      
+      // If we're navigating, update the step index, instruction, and check for arrival
+      if (state.isNavigating && state.activeRoute != null) {
+        await _handleNavigationUpdate(locationId, previousLocationId);
+      }
     } catch (e) {
       _setError('Failed to set current location: $e');
     }
@@ -738,6 +769,12 @@ class NavigationController extends StateNotifier<NavigationSession> {
       // Start NFC scanning
       await _nfcService.startScanning();
       
+      // Add start location to traversed path if it's not there
+      final updatedTraversedPath = List<String>.from(state.traversedPath);
+      if (!updatedTraversedPath.contains(state.currentLocationId!)) {
+        updatedTraversedPath.add(state.currentLocationId!);
+      }
+
       // Get first instruction
       final firstInstruction = state.activeRoute!.getNextInstruction(state.currentLocationId!);
       
@@ -745,6 +782,9 @@ class NavigationController extends StateNotifier<NavigationSession> {
         state: NavigationState.navigating,
         currentInstruction: firstInstruction,
         currentStepIndex: 0,
+        navigationStartTime: DateTime.now(),
+        originalStartLocationId: state.currentLocationId, // Store the original start
+        traversedPath: updatedTraversedPath,
       );
     } catch (e) {
       _setError('Failed to start navigation: $e');
@@ -758,8 +798,10 @@ class NavigationController extends StateNotifier<NavigationSession> {
       
       state = state.copyWith(
         state: NavigationState.idle,
+        activeRoute: null, // Clear the route when stopping navigation
         currentInstruction: null,
         currentStepIndex: 0,
+        traversedPath: [], // Clear traversed path when stopping navigation
       );
     } catch (e) {
       _setError('Failed to stop navigation: $e');
@@ -785,6 +827,145 @@ class NavigationController extends StateNotifier<NavigationSession> {
     if (state.currentLocationId != null && state.destinationLocationId != null && state.isNavigating && state.activeRoute != null) {
       await _handleSignificantDeviation(state.currentLocationId!, state.activeRoute!);
     }
+  }
+
+  /// Force calculate a new route from current position to destination
+  /// This always recalculates regardless of whether user is on the current route
+  /// Used specifically for scan mode where each scan should recalculate the route
+  Future<bool> calculateNewRouteFromCurrent() async {
+    if (state.currentLocationId == null || state.destinationLocationId == null) {
+      return false;
+    }
+
+    // Check if already at destination
+    if (state.currentLocationId == state.destinationLocationId) {
+      await _completeNavigation();
+      return true;
+    }
+
+    try {
+      // Set state to calculating
+      state = state.copyWith(state: NavigationState.calculating);
+
+      final currentLocationId = state.currentLocationId!;
+      final destinationId = state.destinationLocationId!;
+      final oldRoute = state.activeRoute;
+      
+      // Calculate new route from current location to destination
+      final newRoute = await _routeCalculator.calculateRoute(
+        currentLocationId,
+        destinationId,
+      );
+
+      if (newRoute == null || !newRoute.isValid()) {
+        _setError('No route found from current location to destination');
+        return false;
+      }
+
+      // Build the completed path (green) and active path (colored)
+      List<String> completedPath = [];
+      List<String> activePath = newRoute.pathLocationIds;
+      
+      print('DEBUG: Current location: $currentLocationId');
+      print('DEBUG: Original start location: ${state.originalStartLocationId}');
+      print('DEBUG: Old route exists: ${oldRoute != null}');
+      if (oldRoute != null) {
+        print('DEBUG: Old route path: ${oldRoute.pathLocationIds}');
+        print('DEBUG: Current location on old route: ${oldRoute.containsLocation(currentLocationId)}');
+      }
+      print('DEBUG: New route path: ${newRoute.pathLocationIds}');
+      
+      // Determine the completed path based on whether we're on or off route
+      if (oldRoute != null && oldRoute.containsLocation(currentLocationId)) {
+        // ON ROUTE: Just extend the old route up to current location
+        print('DEBUG: ON ROUTE - extending completed path');
+        final currentIndex = oldRoute.getLocationIndex(currentLocationId);
+        completedPath = oldRoute.pathLocationIds.sublist(0, currentIndex + 1);
+        print('DEBUG: Completed path (on route): $completedPath');
+      } else if (oldRoute != null && !oldRoute.containsLocation(currentLocationId)) {
+        // OFF ROUTE: Calculate shortest path from original start to current location
+        print('DEBUG: OFF ROUTE - calculating shortest path from start');
+        if (state.originalStartLocationId != null && state.originalStartLocationId != currentLocationId) {
+          final shortestPathToHere = await _routeCalculator.calculateRoute(
+            state.originalStartLocationId!,
+            currentLocationId,
+          );
+          
+          if (shortestPathToHere != null) {
+            completedPath = shortestPathToHere.pathLocationIds;
+            print('DEBUG: Shortest path from start to current: $completedPath');
+          } else {
+            print('DEBUG: Could not calculate shortest path from start');
+          }
+        }
+      } else if (state.originalStartLocationId == currentLocationId) {
+        // We're at the starting location
+        completedPath = [currentLocationId];
+        print('DEBUG: At starting location');
+      }
+
+      // The full merged path is: completed (green) + active (colored)
+      // But we need to avoid duplicating the current location
+      final mergedPath = completedPath.isNotEmpty
+          ? [...completedPath, ...activePath.skip(1)] // Skip first of active to avoid duplicate
+          : activePath;
+
+      print('DEBUG: Merged path: $mergedPath');
+      print('DEBUG: Completed path length: ${completedPath.length}');
+      
+      // Calculate merged distance and time
+      final completedDistance = await _calculatePathDistance(completedPath);
+      final mergedDistance = completedDistance + newRoute.estimatedDistance;
+      final mergedTime = Duration(milliseconds: (mergedDistance / 80.0 * 60 * 1000).round());
+
+      // Create the merged route
+      final mergedRoute = Route(
+        id: 'merged_${DateTime.now().millisecondsSinceEpoch}',
+        startLocationId: mergedPath.first,
+        endLocationId: mergedPath.last,
+        pathLocationIds: mergedPath,
+        estimatedDistance: mergedDistance,
+        estimatedTime: mergedTime,
+        instructions: newRoute.instructions, // Use new route instructions for simplicity
+      );
+
+      // Find where the current location is in the merged path
+      // Everything BEFORE this index should be green
+      final currentIndexInMerged = mergedRoute.getLocationIndex(currentLocationId);
+      
+      print('DEBUG: Current location index in merged route: $currentIndexInMerged');
+      print('DEBUG: This means segments 0 to ${currentIndexInMerged - 1} should be green');
+      
+      final firstInstruction = mergedRoute.getNextInstruction(currentLocationId);
+
+      state = state.copyWith(
+        activeRoute: mergedRoute,
+        state: NavigationState.navigating,
+        currentInstruction: firstInstruction,
+        currentStepIndex: currentIndexInMerged >= 0 ? currentIndexInMerged : 0,
+      );
+
+      return true;
+    } catch (e) {
+      _setError('Route calculation failed: $e');
+      return false;
+    }
+  }
+
+  /// Calculate distance for a path segment
+  Future<double> _calculatePathDistance(List<String> path) async {
+    double totalDistance = 0.0;
+    
+    for (int i = 0; i < path.length - 1; i++) {
+      final from = await _locationRepository.getLocationById(path[i]);
+      final to = await _locationRepository.getLocationById(path[i + 1]);
+      
+      if (from != null && to != null) {
+        totalDistance += _calculateDistance(from.coordinates, to.coordinates);
+      }
+    }
+    
+    return totalDistance;
   }
 
   /// Check if current location represents a significant deviation

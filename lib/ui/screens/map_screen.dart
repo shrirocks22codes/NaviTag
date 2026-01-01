@@ -464,7 +464,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: color),
       ),
@@ -494,6 +494,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         return Icons.wc;
       case LocationType.office:
         return Icons.business;
+      case LocationType.checkpoint:
+        return Icons.flag_circle;
     }
   }
 
@@ -694,7 +696,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
@@ -747,7 +749,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: _getLocationItemIconColor(isCurrentLocation, isDestination, isOnRoute).withOpacity(0.1),
+                    color: _getLocationItemIconColor(isCurrentLocation, isDestination, isOnRoute).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(
@@ -836,9 +838,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
@@ -853,18 +855,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   /// Get background color for location item based on status
   Color _getLocationItemBackgroundColor(bool isCurrentLocation, bool isDestination, bool isOnRoute) {
-    if (isCurrentLocation) return Colors.blue.withOpacity(0.05);
-    if (isDestination) return Colors.red.withOpacity(0.05);
-    if (isOnRoute) return Colors.green.withOpacity(0.05);
-    return Colors.grey.withOpacity(0.02);
+    if (isCurrentLocation) return Colors.blue.withValues(alpha: 0.05);
+    if (isDestination) return Colors.red.withValues(alpha: 0.05);
+    if (isOnRoute) return Colors.green.withValues(alpha: 0.05);
+    return Colors.grey.withValues(alpha: 0.02);
   }
 
   /// Get border color for location item based on status
   Color _getLocationItemBorderColor(bool isCurrentLocation, bool isDestination, bool isOnRoute) {
-    if (isCurrentLocation) return Colors.blue.withOpacity(0.3);
-    if (isDestination) return Colors.red.withOpacity(0.3);
-    if (isOnRoute) return Colors.green.withOpacity(0.3);
-    return Colors.grey.withOpacity(0.2);
+    if (isCurrentLocation) return Colors.blue.withValues(alpha: 0.3);
+    if (isDestination) return Colors.red.withValues(alpha: 0.3);
+    if (isOnRoute) return Colors.green.withValues(alpha: 0.3);
+    return Colors.grey.withValues(alpha: 0.2);
   }
 
   /// Get icon color for location item based on status
@@ -892,6 +894,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         return 'Restrooms';
       case LocationType.office:
         return 'Offices';
+      case LocationType.checkpoint:
+        return 'Checkpoints';
     }
   }
 

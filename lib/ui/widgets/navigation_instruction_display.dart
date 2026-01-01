@@ -161,7 +161,7 @@ class _NavigationInstructionDisplayState extends ConsumerState<NavigationInstruc
                 color: colorScheme.surface,
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: colorScheme.outline.withOpacity(0.2),
+                  color: colorScheme.outline.withValues(alpha: 0.2),
                 ),
               ),
               child: Column(
@@ -205,7 +205,7 @@ class _NavigationInstructionDisplayState extends ConsumerState<NavigationInstruc
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
-                        color: colorScheme.primaryContainer.withOpacity(0.3),
+                        color: colorScheme.primaryContainer.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Row(
@@ -251,29 +251,24 @@ class _NavigationInstructionDisplayState extends ConsumerState<NavigationInstruc
     switch (instruction.type) {
       case InstructionType.start:
         icon = Icons.play_arrow;
-        backgroundColor = Colors.green.withOpacity(0.2);
+        backgroundColor = Colors.green.withValues(alpha: 0.2);
         iconColor = Colors.green;
-        break;
       case InstructionType.turn:
         icon = _getTurnIcon(instruction.direction);
-        backgroundColor = colorScheme.primaryContainer.withOpacity(0.3);
+        backgroundColor = colorScheme.primaryContainer.withValues(alpha: 0.3);
         iconColor = colorScheme.primary;
-        break;
       case InstructionType.straight:
         icon = Icons.arrow_upward;
-        backgroundColor = colorScheme.secondaryContainer.withOpacity(0.3);
+        backgroundColor = colorScheme.secondaryContainer.withValues(alpha: 0.3);
         iconColor = colorScheme.secondary;
-        break;
       case InstructionType.destination:
         icon = Icons.flag;
-        backgroundColor = Colors.red.withOpacity(0.2);
+        backgroundColor = Colors.red.withValues(alpha: 0.2);
         iconColor = Colors.red;
-        break;
       case InstructionType.reroute:
         icon = Icons.alt_route;
-        backgroundColor = Colors.orange.withOpacity(0.2);
+        backgroundColor = Colors.orange.withValues(alpha: 0.2);
         iconColor = Colors.orange;
-        break;
     }
     
     return AnimatedBuilder(
@@ -285,8 +280,8 @@ class _NavigationInstructionDisplayState extends ConsumerState<NavigationInstruc
           decoration: BoxDecoration(
             color: backgroundColor,
             shape: BoxShape.circle,
-            border: Border.all(
-              color: iconColor.withOpacity(0.3),
+              border: Border.all(
+              color: iconColor.withValues(alpha: 0.3),
               width: 2,
             ),
           ),
@@ -316,7 +311,6 @@ class _NavigationInstructionDisplayState extends ConsumerState<NavigationInstruc
       case Direction.down:
         return Icons.keyboard_arrow_down;
       case Direction.forward:
-      default:
         return Icons.arrow_upward;
     }
   }
@@ -349,7 +343,6 @@ class _NavigationInstructionDisplayState extends ConsumerState<NavigationInstruc
       case Direction.down:
         return 'Go Down';
       case Direction.forward:
-      default:
         return 'Continue Forward';
     }
   }
@@ -390,7 +383,7 @@ class _NavigationInstructionDisplayState extends ConsumerState<NavigationInstruc
                     gradient: LinearGradient(
                       colors: [
                         colorScheme.primary,
-                        colorScheme.primary.withOpacity(0.8),
+                        colorScheme.primary.withValues(alpha: 0.8),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(3),
@@ -490,11 +483,11 @@ class CompactNavigationInstructionDisplay extends ConsumerWidget {
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: colorScheme.outline.withOpacity(0.2),
+          color: colorScheme.outline.withValues(alpha: 0.2),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -564,7 +557,7 @@ class CompactNavigationInstructionDisplay extends ConsumerWidget {
       width: 32,
       height: 32,
       decoration: BoxDecoration(
-        color: iconColor.withOpacity(0.1),
+        color: iconColor.withValues(alpha: 0.1),
         shape: BoxShape.circle,
       ),
       child: Icon(
@@ -588,7 +581,6 @@ class CompactNavigationInstructionDisplay extends ConsumerWidget {
       case Direction.down:
         return Icons.keyboard_arrow_down;
       case Direction.forward:
-      default:
         return Icons.arrow_upward;
     }
   }
@@ -621,7 +613,6 @@ class CompactNavigationInstructionDisplay extends ConsumerWidget {
       case Direction.down:
         return 'Go Down';
       case Direction.forward:
-      default:
         return 'Continue Forward';
     }
   }

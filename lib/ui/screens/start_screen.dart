@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/nfc_service.dart';
 import '../../controllers/navigation_controller.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 import 'scan_mode_screen.dart';
 import 'manual_mode_screen.dart';
 
-/// Starting screen for NaviTag NFC Navigator
+
 class StartScreen extends ConsumerStatefulWidget {
   const StartScreen({super.key});
 
@@ -85,19 +87,53 @@ class _StartScreenState extends ConsumerState<StartScreen>
     }
   }
 
-  void _showNFCNotAvailableDialog() {
+  void _showNFCNotAvailableDialog() async {
+    final nfcService = ref.read(nfcServiceProvider);
+    final availabilityStatus = await nfcService.checkNFCAvailability();
+    
+    if (!mounted) return; // Check if widget is still mounted
+    
+    String title = 'NFC Not Available';
+    String message = 'Your device is not NFC applicable. Try Manual mode instead.';
+    
+    switch (availabilityStatus) {
+      case NFCAvailabilityStatus.disabled:
+        title = 'NFC Disabled';
+        message = 'NFC is disabled on your device. Please enable NFC in Settings and try again, or use Manual mode instead.';
+        break;
+      case NFCAvailabilityStatus.notSupported:
+        title = 'NFC Not Supported';
+        message = 'Your device does not support NFC. Please use Manual mode instead.';
+        break;
+      case NFCAvailabilityStatus.unknown:
+        title = 'NFC Status Unknown';
+        message = 'Unable to determine NFC status. This may be due to device restrictions. Try Manual mode instead.';
+        break;
+      case NFCAvailabilityStatus.available:
+        title = 'NFC Issue';
+        message = 'NFC appears to be available but there was an issue starting scan mode. Try again or use Manual mode.';
+        break;
+    }
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('NFC Not Available'),
-        content: const Text(
-          'Your device is not NFC applicable. Try Manual mode instead.',
-        ),
+        title: Text(title),
+        content: Text(message),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Cancel'),
           ),
+          if (availabilityStatus == NFCAvailabilityStatus.disabled)
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                // Try again after user potentially enables NFC
+                _onScanModePressed();
+              },
+              child: const Text('Try Again'),
+            ),
           ElevatedButton(
             onPressed: () {
               Navigator.of(context).pop();
@@ -122,15 +158,45 @@ class _StartScreenState extends ConsumerState<StartScreen>
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final screenSize = MediaQuery.of(context).size;
+    final isSmallScreen = screenSize.height < 700;
+    
+    // Get current language and localizations
+    final currentLanguage = ref.watch(languageProvider);
+    final l10n = AppLocalizations(currentLanguage);
+    
+    // Responsive sizing
+    final logoSize = isSmallScreen ? 80.0 : 120.0;
+    final iconSize = isSmallScreen ? 40.0 : 60.0;
+    final titleStyle = isSmallScreen 
+        ? theme.textTheme.displaySmall?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: colorScheme.primary,
+          )
+        : theme.textTheme.displayLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: colorScheme.primary,
+          );
+    final verticalSpacing = isSmallScreen ? 16.0 : 32.0;
+    final largeVerticalSpacing = isSmallScreen ? 24.0 : 48.0;
+    final buttonHeight = isSmallScreen ? 48.0 : 56.0;
 
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: const [
+          LanguageSelector(),
+        ],
+      ),
+      extendBodyBehindAppBar: true,
       body: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              colorScheme.primary.withOpacity(0.1),
+              colorScheme.primary.withValues(alpha: 0.1),
               colorScheme.surface,
             ],
           ),
@@ -140,179 +206,188 @@ class _StartScreenState extends ConsumerState<StartScreen>
             opacity: _fadeAnimation,
             child: ScaleTransition(
               scale: _scaleAnimation,
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // App Logo/Icon
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: colorScheme.primary.withOpacity(0.3),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        Icons.nfc,
-                        size: 60,
-                        color: colorScheme.onPrimary,
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    // App Title
-                    Text(
-                      'NaviTag',
-                      style: theme.textTheme.displayLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.primary,
-                      ),
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    Text(
-                      'NFC Navigator',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w300,
-                      ),
-                    ),
-
-                    const SizedBox(height: 48),
-
-                    // NFC Warning
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: Colors.amber.withOpacity(0.3),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.warning_amber_rounded,
-                            color: Colors.amber[700],
-                            size: 24,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Make sure NFC is enabled on your device for the best experience',
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: Colors.amber[800],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    const SizedBox(height: 48),
-
-                    // Mode Selection Buttons
-                    Column(
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    minHeight: screenSize.height - MediaQuery.of(context).padding.top - MediaQuery.of(context).padding.bottom,
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.all(isSmallScreen ? 16.0 : 24.0),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Scan Mode Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: ElevatedButton.icon(
-                            onPressed: _isCheckingNFC ? null : _onScanModePressed,
-                            icon: _isCheckingNFC
-                                ? SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      valueColor: AlwaysStoppedAnimation<Color>(
-                                        colorScheme.onPrimary,
-                                      ),
-                                    ),
-                                  )
-                                : const Icon(Icons.nfc, size: 24),
-                            label: Text(
-                              _isCheckingNFC ? 'Checking NFC...' : 'Scan Mode',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
+                        SizedBox(height: verticalSpacing),
+                        
+                        // App Logo/Icon
+                        Container(
+                          width: logoSize,
+                          height: logoSize,
+                          decoration: BoxDecoration(
+                            color: colorScheme.primary,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: colorScheme.primary.withValues(alpha: 0.3),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
                               ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: colorScheme.primary,
-                              foregroundColor: colorScheme.onPrimary,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              elevation: 4,
-                            ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.nfc,
+                            size: iconSize,
+                            color: colorScheme.onPrimary,
                           ),
                         ),
 
-                        const SizedBox(height: 16),
+                        SizedBox(height: verticalSpacing),
 
-                        // Manual Mode Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: 56,
-                          child: OutlinedButton.icon(
-                            onPressed: _onManualModePressed,
-                            icon: const Icon(Icons.map, size: 24),
-                            label: const Text(
-                              'Manual Mode',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: colorScheme.primary,
-                              side: BorderSide(
-                                color: colorScheme.primary,
-                                width: 2,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                            ),
+                        // App Title
+                        Text(
+                          l10n.get('app_name'),
+                          style: titleStyle,
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        Text(
+                          l10n.get('app_subtitle'),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w300,
                           ),
                         ),
+
+                        SizedBox(height: largeVerticalSpacing),
+
+                        // NFC Warning
+                        Container(
+                          padding: EdgeInsets.all(isSmallScreen ? 12.0 : 16.0),
+                          decoration: BoxDecoration(
+                            color: Colors.amber.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: Colors.amber.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.warning_amber_rounded,
+                                color: Colors.amber[700],
+                                size: isSmallScreen ? 20 : 24,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  l10n.get('nfc_warning'),
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: Colors.amber[800],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        SizedBox(height: largeVerticalSpacing),
+
+                        // Mode Selection Buttons
+                        Column(
+                          children: [
+                            // Scan Mode Button
+                            SizedBox(
+                              width: double.infinity,
+                              height: buttonHeight,
+                              child: ElevatedButton.icon(
+                                onPressed: _isCheckingNFC ? null : _onScanModePressed,
+                                icon: _isCheckingNFC
+                                    ? SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor: AlwaysStoppedAnimation<Color>(
+                                            colorScheme.onPrimary,
+                                          ),
+                                        ),
+                                      )
+                                    : Icon(Icons.nfc, size: isSmallScreen ? 20 : 24),
+                                label: Text(
+                                  _isCheckingNFC ? l10n.get('checking_nfc') : l10n.get('scan_mode'),
+                                  style: TextStyle(
+                                    fontSize: isSmallScreen ? 16 : 18,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: colorScheme.primary,
+                                  foregroundColor: colorScheme.onPrimary,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  elevation: 4,
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            // Manual Mode Button
+                            SizedBox(
+                              width: double.infinity,
+                              height: buttonHeight,
+                              child: OutlinedButton.icon(
+                                onPressed: _onManualModePressed,
+                                icon: Icon(Icons.map, size: isSmallScreen ? 20 : 24),
+                                label: Text(
+                                  l10n.get('manual_mode'),
+                                  style: TextStyle(
+                                    fontSize: isSmallScreen ? 16 : 18,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: colorScheme.primary,
+                                  side: BorderSide(
+                                    color: colorScheme.primary,
+                                    width: 2,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        SizedBox(height: verticalSpacing),
+
+                        // Mode Descriptions
+                        Column(
+                          children: [
+                            _buildModeDescription(
+                              icon: Icons.nfc,
+                              title: l10n.get('scan_mode'),
+                              description: l10n.get('scan_mode_desc'),
+                              color: colorScheme.primary,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildModeDescription(
+                              icon: Icons.map,
+                              title: l10n.get('manual_mode'),
+                              description: l10n.get('manual_mode_desc'),
+                              color: colorScheme.secondary,
+                            ),
+                          ],
+                        ),
+                        
+                        SizedBox(height: verticalSpacing),
                       ],
                     ),
-
-                    const SizedBox(height: 32),
-
-                    // Mode Descriptions
-                    Column(
-                      children: [
-                        _buildModeDescription(
-                          icon: Icons.nfc,
-                          title: 'Scan Mode',
-                          description: 'Scan NFC tags to navigate step-by-step',
-                          color: colorScheme.primary,
-                        ),
-                        const SizedBox(height: 16),
-                        _buildModeDescription(
-                          icon: Icons.map,
-                          title: 'Manual Mode',
-                          description: 'Choose start and end points manually',
-                          color: colorScheme.secondary,
-                        ),
-                      ],
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -334,7 +409,7 @@ class _StartScreenState extends ConsumerState<StartScreen>
           width: 40,
           height: 40,
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(

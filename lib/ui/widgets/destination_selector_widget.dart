@@ -130,7 +130,7 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: colorScheme.onSurfaceVariant.withOpacity(0.4),
+              color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -192,10 +192,10 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
   Widget _buildSearchBar(ThemeData theme, ColorScheme colorScheme) {
     return Container(
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withOpacity(0.3),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: colorScheme.outline.withOpacity(0.2),
+          color: colorScheme.outline.withValues(alpha: 0.2),
         ),
       ),
       child: TextField(
@@ -204,7 +204,7 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
         decoration: InputDecoration(
           hintText: 'Search locations...',
           hintStyle: TextStyle(
-            color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+            color: colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
           ),
           prefixIcon: Icon(
             Icons.search,
@@ -279,7 +279,7 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
                 side: BorderSide(
                   color: _selectedTypeFilter == null
                       ? colorScheme.primary
-                      : colorScheme.outline.withOpacity(0.3),
+                      : colorScheme.outline.withValues(alpha: 0.3),
                 ),
               ),
             );
@@ -324,7 +324,7 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
               side: BorderSide(
                 color: isSelected
                     ? colorScheme.primary
-                    : colorScheme.outline.withOpacity(0.3),
+                    : colorScheme.outline.withValues(alpha: 0.3),
               ),
             ),
           );
@@ -353,7 +353,7 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
               Icon(
                 _searchQuery.isNotEmpty ? Icons.search_off : Icons.location_off,
                 size: 48,
-                color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
               ),
               const SizedBox(height: 16),
               Text(
@@ -438,7 +438,7 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
                       isCurrentLocation,
                       isDestination,
                       isOnRoute,
-                    ).withOpacity(0.1),
+                    ).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -518,7 +518,7 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
                   Icon(
                     Icons.arrow_forward_ios,
                     size: 16,
-                    color: colorScheme.onSurfaceVariant.withOpacity(0.5),
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
                   ),
                 ],
               ],
@@ -533,9 +533,9 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(
         label,
@@ -568,9 +568,6 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
     // Set as destination in navigation controller
     ref.read(navigationControllerProvider.notifier).setDestination(location.id);
     
-    // Close the selector
-    Navigator.of(context).pop();
-    
     // Show confirmation
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -588,9 +585,9 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
     bool isDestination,
     bool isOnRoute,
   ) {
-    if (isCurrentLocation) return colorScheme.primary.withOpacity(0.05);
-    if (isDestination) return colorScheme.error.withOpacity(0.05);
-    if (isOnRoute) return colorScheme.tertiary.withOpacity(0.05);
+    if (isCurrentLocation) return colorScheme.primary.withValues(alpha: 0.05);
+    if (isDestination) return colorScheme.error.withValues(alpha: 0.05);
+    if (isOnRoute) return colorScheme.tertiary.withValues(alpha: 0.05);
     return colorScheme.surface;
   }
 
@@ -600,10 +597,10 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
     bool isDestination,
     bool isOnRoute,
   ) {
-    if (isCurrentLocation) return colorScheme.primary.withOpacity(0.3);
-    if (isDestination) return colorScheme.error.withOpacity(0.3);
-    if (isOnRoute) return colorScheme.tertiary.withOpacity(0.3);
-    return colorScheme.outline.withOpacity(0.2);
+    if (isCurrentLocation) return colorScheme.primary.withValues(alpha: 0.3);
+    if (isDestination) return colorScheme.error.withValues(alpha: 0.3);
+    if (isOnRoute) return colorScheme.tertiary.withValues(alpha: 0.3);
+    return colorScheme.outline.withValues(alpha: 0.2);
   }
 
   Color _getLocationItemIconColor(
@@ -634,6 +631,8 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
         return Icons.wc;
       case LocationType.office:
         return Icons.business;
+      case LocationType.checkpoint:
+        return Icons.flag_circle;
     }
   }
 
@@ -653,7 +652,8 @@ class _DestinationSelectorWidgetState extends ConsumerState<DestinationSelectorW
         return 'Restroom';
       case LocationType.office:
         return 'Office';
+      case LocationType.checkpoint:
+        return 'Checkpoint';
     }
   }
 }
-

@@ -2,9 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../controllers/navigation_controller.dart';
 import '../../models/location.dart';
+import '../../providers/language_provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../repositories/location_repository.dart';
 import '../widgets/interactive_map_widget.dart';
 import 'destination_selector_screen.dart';
+import 'starting_point_selector_screen.dart';
+import 'map_screen.dart';
 import 'destination_reached_screen.dart';
 
 /// Manual mode screen for map-based navigation
@@ -24,6 +28,10 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
   @override
   void initState() {
     super.initState();
+    // Clear any existing navigation session when entering manual mode
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(navigationControllerProvider.notifier).clearSession();
+    });
   }
 
   void _onLocationTapped(Location location) {
@@ -83,14 +91,19 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
   }
 
   void _showStartLocationSelector() {
-    DestinationSelectorScreen.showAsFullScreen(
+    StartingPointSelectorScreen.showAsFullScreen(
       context,
-      onDestinationSelected: (location) {
+      onStartingPointSelected: (location) {
         setState(() {
           _startLocationId = location.id;
           _isSelectingStart = false;
         });
         ref.read(navigationControllerProvider.notifier).setCurrentLocation(location.id);
+        
+        // If both start and destination are selected, navigate to map screen
+        if (_destinationLocationId != null) {
+          _navigateToMapScreen();
+        }
       },
       showCurrentLocation: false,
       title: 'Select Start Location',
@@ -104,9 +117,23 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
         setState(() {
           _destinationLocationId = location.id;
         });
+        ref.read(navigationControllerProvider.notifier).setDestination(location.id);
+        
+        // If both start and destination are selected, navigate to map screen
+        if (_startLocationId != null) {
+          _navigateToMapScreen();
+        }
       },
       showCurrentLocation: false,
       title: 'Select Destination',
+    );
+  }
+
+  void _navigateToMapScreen() {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (context) => const MapScreen(),
+      ),
     );
   }
 
@@ -118,6 +145,7 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
           builder: (context) => DestinationReachedScreen(
             completedRoute: session.activeRoute!,
             pathTaken: session.activeRoute!.pathLocationIds,
+            actualTimeTaken: session.actualTimeTaken,
           ),
         ),
       );
@@ -150,176 +178,240 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
         
         final locations = snapshot.data ?? [];
 
+    final screenSize = MediaQuery.of(context).size;
+    final isSmallScreen = screenSize.height < 700;
+    
+    // Get current language and localizations
+    final currentLanguage = ref.watch(languageProvider);
+    final l10n = AppLocalizations(currentLanguage);
+    
+    // Responsive sizing
+    final containerPadding = isSmallScreen ? 12.0 : 20.0;
+    final cardPadding = isSmallScreen ? 12.0 : 16.0;
+    final buttonHeight = isSmallScreen ? 48.0 : 56.0;
+    final smallButtonHeight = isSmallScreen ? 40.0 : 48.0;
+    final iconSize = isSmallScreen ? 18.0 : 20.0;
+    final arrowIconSize = isSmallScreen ? 20.0 : 24.0;
+    final mapMargin = isSmallScreen ? 12.0 : 16.0;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Manual Mode'),
+        title: Text(l10n.get('manual_mode_title')),
         backgroundColor: colorScheme.surface,
         elevation: 0,
         actions: [
+          const LanguageSelector(),
           if (_startLocationId != null || _destinationLocationId != null)
             IconButton(
               icon: const Icon(Icons.refresh),
               onPressed: _resetSelection,
-              tooltip: 'Reset Selection',
+              tooltip: l10n.get('reset_selection'),
             ),
         ],
       ),
       body: Column(
         children: [
-          // Status and controls area
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: colorScheme.secondaryContainer.withOpacity(0.3),
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(24),
-                bottomRight: Radius.circular(24),
-              ),
-            ),
-            child: Column(
-              children: [
-                // Selection status
-                Row(
+          // Status and controls area - scrollable on small screens
+          Flexible(
+            flex: 0,
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(containerPadding),
+                decoration: BoxDecoration(
+                  color: colorScheme.secondaryContainer.withValues(alpha: 0.3),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(24),
+                    bottomRight: Radius.circular(24),
+                  ),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Expanded(
-                      child: _buildLocationCard(
-                        title: 'Start',
-                        locationId: _startLocationId,
-                        isSelected: _startLocationId != null,
-                        isActive: _isSelectingStart,
-                        icon: Icons.play_arrow,
-                        color: Colors.green,
-                        onTap: _showStartLocationSelector,
-                        locations: locations,
+                    // Selection status
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildLocationCard(
+                            title: l10n.get('start'),
+                            locationId: _startLocationId,
+                            isSelected: _startLocationId != null,
+                            isActive: _isSelectingStart,
+                            icon: Icons.play_arrow,
+                            color: Colors.green,
+                            onTap: _showStartLocationSelector,
+                            locations: locations,
+                            padding: cardPadding,
+                            notSelectedText: l10n.get('not_selected'),
+                          ),
+                        ),
+                        SizedBox(width: isSmallScreen ? 8 : 16),
+                        Icon(
+                          Icons.arrow_forward,
+                          color: colorScheme.onSurfaceVariant,
+                          size: arrowIconSize,
+                        ),
+                        SizedBox(width: isSmallScreen ? 8 : 16),
+                        Expanded(
+                          child: _buildLocationCard(
+                            title: l10n.get('destination'),
+                            locationId: _destinationLocationId,
+                            isSelected: _destinationLocationId != null,
+                            isActive: !_isSelectingStart && !_isNavigating,
+                            icon: Icons.flag,
+                            color: Colors.red,
+                            onTap: _showDestinationSelector,
+                            locations: locations,
+                            padding: cardPadding,
+                            notSelectedText: l10n.get('not_selected'),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    if (_isSelectingStart) ...[
+                      SizedBox(height: isSmallScreen ? 10 : 16),
+                      Container(
+                        padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+                        decoration: BoxDecoration(
+                          color: Colors.green.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.green.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.touch_app,
+                              color: Colors.green[700],
+                              size: iconSize,
+                            ),
+                            SizedBox(width: isSmallScreen ? 8 : 12),
+                            Expanded(
+                              child: Text(
+                                isSmallScreen 
+                                    ? 'Select your starting location' 
+                                    : 'First, select your starting location using the button above or by tapping on the map',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.green[700],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    Icon(
-                      Icons.arrow_forward,
-                      color: colorScheme.onSurfaceVariant,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: _buildLocationCard(
-                        title: 'Destination',
-                        locationId: _destinationLocationId,
-                        isSelected: _destinationLocationId != null,
-                        isActive: !_isSelectingStart && !_isNavigating,
-                        icon: Icons.flag,
-                        color: Colors.red,
-                        onTap: _showDestinationSelector,
-                        locations: locations,
+                    ] else if (!_isNavigating && _destinationLocationId == null) ...[
+                      SizedBox(height: isSmallScreen ? 10 : 16),
+                      Container(
+                        padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.blue.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.touch_app,
+                              color: Colors.blue[700],
+                              size: iconSize,
+                            ),
+                            SizedBox(width: isSmallScreen ? 8 : 12),
+                            Expanded(
+                              child: Text(
+                                isSmallScreen 
+                                    ? 'Now select your destination' 
+                                    : 'Now select your destination using the button above or by tapping on the map',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: Colors.blue[700],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
+                    ] else if (_startLocationId != null && _destinationLocationId != null && !_isNavigating) ...[
+                      SizedBox(height: isSmallScreen ? 10 : 16),
+                      Container(
+                        padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: colorScheme.primary.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.navigation,
+                              color: colorScheme.primary,
+                              size: iconSize,
+                            ),
+                            SizedBox(width: isSmallScreen ? 8 : 12),
+                            Expanded(
+                              child: Text(
+                                isSmallScreen 
+                                    ? 'Both locations selected!' 
+                                    : 'Great! Both locations selected. You\'ll be taken to the map screen automatically.',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else if (_isNavigating) ...[
+                      SizedBox(height: isSmallScreen ? 10 : 16),
+                      Container(
+                        padding: EdgeInsets.all(isSmallScreen ? 8 : 12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.primary.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: colorScheme.primary.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.navigation,
+                              color: colorScheme.primary,
+                              size: iconSize,
+                            ),
+                            SizedBox(width: isSmallScreen ? 8 : 12),
+                            Expanded(
+                              child: Text(
+                                'Navigation active - Follow the route',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: colorScheme.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
-
-                if (_isSelectingStart) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.green.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.touch_app,
-                          color: Colors.green[700],
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Tap on the map or use the button to select your starting location',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: Colors.green[700],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ] else if (!_isNavigating && _destinationLocationId == null) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.blue.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.touch_app,
-                          color: Colors.blue[700],
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Now tap on the map or use the button to select your destination',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: Colors.blue[700],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ] else if (_isNavigating) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: colorScheme.primary.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: colorScheme.primary.withOpacity(0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.navigation,
-                          color: colorScheme.primary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Text(
-                            'Navigation active - Follow the route shown on the map',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
 
           // Map area
           Expanded(
             child: Container(
-              margin: const EdgeInsets.all(16),
+              margin: EdgeInsets.all(mapMargin),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 10,
                     offset: const Offset(0, 4),
                   ),
@@ -341,20 +433,20 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
 
           // Action buttons
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(isSmallScreen ? 12 : 20),
             child: Column(
               children: [
                 if (_startLocationId != null && _destinationLocationId != null && !_isNavigating)
                   SizedBox(
                     width: double.infinity,
-                    height: 56,
+                    height: buttonHeight,
                     child: ElevatedButton.icon(
                       onPressed: _startNavigation,
-                      icon: const Icon(Icons.navigation),
-                      label: const Text(
+                      icon: Icon(Icons.navigation, size: isSmallScreen ? 20 : 24),
+                      label: Text(
                         'Start Navigation',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: isSmallScreen ? 16 : 18,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -371,14 +463,14 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
                 if (_isNavigating) ...[
                   SizedBox(
                     width: double.infinity,
-                    height: 56,
+                    height: buttonHeight,
                     child: ElevatedButton.icon(
                       onPressed: _simulateArrival,
-                      icon: const Icon(Icons.flag),
-                      label: const Text(
-                        'Simulate Arrival',
+                      icon: Icon(Icons.flag, size: isSmallScreen ? 20 : 24),
+                      label: Text(
+                        'Arrived at Destination',
                         style: TextStyle(
-                          fontSize: 18,
+                          fontSize: isSmallScreen ? 16 : 18,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -391,10 +483,10 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: isSmallScreen ? 8 : 12),
                   SizedBox(
                     width: double.infinity,
-                    height: 48,
+                    height: smallButtonHeight,
                     child: OutlinedButton.icon(
                       onPressed: () {
                         ref.read(navigationControllerProvider.notifier).stopNavigation();
@@ -402,8 +494,11 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
                           _isNavigating = false;
                         });
                       },
-                      icon: const Icon(Icons.stop),
-                      label: const Text('Stop Navigation'),
+                      icon: Icon(Icons.stop, size: isSmallScreen ? 18 : 20),
+                      label: Text(
+                        'Stop Navigation',
+                        style: TextStyle(fontSize: isSmallScreen ? 14 : 16),
+                      ),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: colorScheme.error,
                         side: BorderSide(color: colorScheme.error),
@@ -433,10 +528,12 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
     required Color color,
     required VoidCallback onTap,
     required List<Location> locations,
+    double padding = 16.0,
+    String notSelectedText = 'Not selected',
   }) {
     final theme = Theme.of(context);
     
-    String locationName = 'Not selected';
+    String locationName = notSelectedText;
     if (locationId != null) {
       final location = locations.firstWhere(
         (loc) => loc.id == locationId,
@@ -455,18 +552,18 @@ class _ManualModeScreenState extends ConsumerState<ManualModeScreen> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(padding),
         decoration: BoxDecoration(
           color: isActive
-              ? color.withOpacity(0.1)
+              ? color.withValues(alpha: 0.1)
               : theme.colorScheme.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isSelected
                 ? color
                 : isActive
-                    ? color.withOpacity(0.5)
-                    : theme.colorScheme.outline.withOpacity(0.3),
+                    ? color.withValues(alpha: 0.5)
+                    : theme.colorScheme.outline.withValues(alpha: 0.3),
             width: isSelected ? 2 : 1,
           ),
         ),

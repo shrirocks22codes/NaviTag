@@ -348,6 +348,12 @@ class DijkstraRouteCalculator implements RouteCalculator {
     String end,
     Map<String, Location> locationMap,
   ) async {
+    // For specific routes, force inclusion of intermediate checkpoints
+    final forcedPath = _getForcedIntermediateCheckpoints(start, end);
+    if (forcedPath != null) {
+      return _calculatePathThroughWaypoints(start, end, forcedPath, locationMap);
+    }
+    
     // Initialize distances and previous nodes
     final distances = <String, double>{};
     final previous = <String, String?>{};
@@ -430,6 +436,103 @@ class DijkstraRouteCalculator implements RouteCalculator {
     );
   }
   
+  /// Get forced intermediate checkpoints for specific routes
+  List<String>? _getForcedIntermediateCheckpoints(String start, String end) {
+    // Force CPA for routes between CP2 and CP3 (and vice versa)
+    if ((start == 'CP2' && end == 'CP3') || (start == 'CP3' && end == 'CP2')) {
+      return ['CPA'];
+    }
+    
+    // Force CP9 for routes to/from Cafeteria that go through CP2
+    if ((start == 'CP2' && end == 'Cafeteria') || (start == 'Cafeteria' && end == 'CP2')) {
+      return ['CP9'];
+    }
+    
+    // Force CP10 for routes to/from Media Center that go through CP3
+    if ((start == 'CP3' && end == 'Media Center') || (start == 'Media Center' && end == 'CP3')) {
+      return ['CP10'];
+    }
+    
+    // For longer routes, check if they should include these checkpoints
+    if (_shouldRouteIncludeCPA(start, end)) {
+      return ['CPA'];
+    }
+    
+    if (_shouldRouteIncludeCP9(start, end)) {
+      return ['CP9'];
+    }
+    
+    if (_shouldRouteIncludeCP10(start, end)) {
+      return ['CP10'];
+    }
+    
+    return null;
+  }
+  
+  /// Check if route should include CPA
+  bool _shouldRouteIncludeCPA(String start, String end) {
+    // Routes that logically go through the CP2-CP3 corridor should include CPA
+    final cp2ConnectedAreas = ['Gym', 'CP1', 'Bus Entrance'];
+    final cp3ConnectedAreas = ['7 Red/7 Gold', 'CP11'];
+    
+    final startNearCP2 = cp2ConnectedAreas.contains(start) || start == 'CP2';
+    final endNearCP3 = cp3ConnectedAreas.contains(end) || end == 'CP3';
+    final startNearCP3 = cp3ConnectedAreas.contains(start) || start == 'CP3';
+    final endNearCP2 = cp2ConnectedAreas.contains(end) || end == 'CP2';
+    
+    return (startNearCP2 && endNearCP3) || (startNearCP3 && endNearCP2);
+  }
+  
+  /// Check if route should include CP9
+  bool _shouldRouteIncludeCP9(String start, String end) {
+    // Routes to/from Cafeteria should include CP9
+    return start == 'Cafeteria' || end == 'Cafeteria';
+  }
+  
+  /// Check if route should include CP10
+  bool _shouldRouteIncludeCP10(String start, String end) {
+    // Routes to/from Media Center should include CP10
+    return start == 'Media Center' || end == 'Media Center';
+  }
+  
+  /// Calculate path through specific waypoints
+  Future<_PathResult?> _calculatePathThroughWaypoints(
+    String start,
+    String end,
+    List<String> waypoints,
+    Map<String, Location> locationMap,
+  ) async {
+    final fullPath = [start, ...waypoints, end];
+    final pathSegments = <String>[];
+    double totalDistance = 0.0;
+    
+    // Calculate path through each segment
+    for (int i = 0; i < fullPath.length - 1; i++) {
+      final segmentStart = fullPath[i];
+      final segmentEnd = fullPath[i + 1];
+      
+      // Calculate segment using regular Dijkstra
+      final segmentResult = await _dijkstraShortestPath(segmentStart, segmentEnd, locationMap);
+      if (segmentResult == null) {
+        return null; // Cannot reach waypoint
+      }
+      
+      // Add segment to path (skip duplicate waypoints)
+      if (pathSegments.isEmpty) {
+        pathSegments.addAll(segmentResult.path);
+      } else {
+        pathSegments.addAll(segmentResult.path.skip(1)); // Skip first element to avoid duplication
+      }
+      
+      totalDistance += segmentResult.totalDistance;
+    }
+    
+    return _PathResult(
+      path: pathSegments,
+      totalDistance: totalDistance,
+    );
+  }
+  
   /// Build a Route object from path result
   Route _buildRouteFromPath(_PathResult pathResult, Map<String, Location> locationMap) {
     final path = pathResult.path;
@@ -439,8 +542,13 @@ class DijkstraRouteCalculator implements RouteCalculator {
     final routeId = 'route_${DateTime.now().millisecondsSinceEpoch}';
     
     // Calculate estimated time based on distance
+    // For indoor navigation, ensure minimum time based on number of checkpoints
+    final baseTimeMinutes = (totalDistance / _walkingSpeedMPerMin);
+    final checkpointTimeMinutes = (path.length - 1) * 0.5; // 30 seconds per checkpoint
+    final estimatedTimeMinutes = baseTimeMinutes + checkpointTimeMinutes; // Remove minimum clamp
+    
     final estimatedTime = Duration(
-      minutes: (totalDistance / _walkingSpeedMPerMin).ceil(),
+      milliseconds: (estimatedTimeMinutes * 60 * 1000).round(),
     );
     
     // Generate navigation instructions
@@ -574,7 +682,7 @@ class DijkstraRouteCalculator implements RouteCalculator {
       endLocationId: location.id,
       pathLocationIds: [location.id],
       estimatedDistance: 0.0,
-      estimatedTime: Duration.zero,
+      estimatedTime: const Duration(seconds: 0), // No time needed for same location
       instructions: [
         NavigationInstruction(
           id: 'instruction_same_${DateTime.now().millisecondsSinceEpoch}',

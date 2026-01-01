@@ -148,7 +148,7 @@ class InMemoryLocationRepository implements LocationRepository {
       Location(
         id: 'Main Office',
         name: 'Main Office',
-        description: 'School administrative office',
+        description: 'School office',
         coordinates: pixelToCoordinates(1014, 1107),
         connectedLocationIds: ['CP5'],
         type: LocationType.office,
@@ -157,7 +157,7 @@ class InMemoryLocationRepository implements LocationRepository {
       Location(
         id: "Nurse's Office",
         name: "Nurse's Office",
-        description: 'School health office',
+        description: 'School nurse and medical room',
         coordinates: pixelToCoordinates(1031, 901),
         connectedLocationIds: ['CP6'],
         type: LocationType.office,
@@ -218,7 +218,7 @@ class InMemoryLocationRepository implements LocationRepository {
         description: 'Navigation checkpoint near gym area',
         coordinates: pixelToCoordinates(372, 458),
         connectedLocationIds: ['Gym', 'CP2', 'Bus Entrance'],
-        type: LocationType.hallway,
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:1C:01:00:44:03',
       ),
       Location(
@@ -226,8 +226,8 @@ class InMemoryLocationRepository implements LocationRepository {
         name: 'Checkpoint 2',
         description: 'Central corridor junction',
         coordinates: pixelToCoordinates(658, 461),
-        connectedLocationIds: ['CP1', 'CP9', 'CP3', 'CP4'],
-        type: LocationType.hallway,
+        connectedLocationIds: ['CP1', 'CP9', 'CPA'],
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:06:01:3A:44:03',
       ),
       Location(
@@ -235,8 +235,8 @@ class InMemoryLocationRepository implements LocationRepository {
         name: 'Checkpoint 3',
         description: 'East corridor checkpoint',
         coordinates: pixelToCoordinates(969, 464),
-        connectedLocationIds: ['CP2', 'CPA', 'CP11', '7 Red/7 Gold'],
-        type: LocationType.hallway,
+        connectedLocationIds: ['CPA', '7 Red/7 Gold', 'CP10'],
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:BA:01:E8:44:03',
       ),
       Location(
@@ -244,8 +244,8 @@ class InMemoryLocationRepository implements LocationRepository {
         name: 'Checkpoint A',
         description: 'Auxiliary checkpoint',
         coordinates: pixelToCoordinates(816, 465),
-        connectedLocationIds: ['CP3', 'CP2', 'CP11'],
-        type: LocationType.hallway,
+        connectedLocationIds: ['CP3', 'CP2'],
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:67:01:3B:44:03',
       ),
       Location(
@@ -254,7 +254,7 @@ class InMemoryLocationRepository implements LocationRepository {
         description: 'Cafeteria area checkpoint',
         coordinates: pixelToCoordinates(658, 576),
         connectedLocationIds: ['CP2', 'Cafeteria', 'CP4'],
-        type: LocationType.hallway,
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:A6:01:DD:44:03',
       ),
       Location(
@@ -263,7 +263,7 @@ class InMemoryLocationRepository implements LocationRepository {
         description: 'Media center area checkpoint',
         coordinates: pixelToCoordinates(970, 651),
         connectedLocationIds: ['CP3', 'CP11', 'Media Center'],
-        type: LocationType.hallway,
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:5A:01:DA:44:03',
       ),
       Location(
@@ -272,7 +272,7 @@ class InMemoryLocationRepository implements LocationRepository {
         description: 'Secondary auxiliary checkpoint',
         coordinates: pixelToCoordinates(813, 849),
         connectedLocationIds: ['CP4', 'CP11'],
-        type: LocationType.hallway,
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:34:01:5E:44:03',
       ),
       Location(
@@ -280,8 +280,8 @@ class InMemoryLocationRepository implements LocationRepository {
         name: 'Checkpoint 4',
         description: 'South corridor checkpoint',
         coordinates: pixelToCoordinates(658, 850),
-        connectedLocationIds: ['CP2', 'CP9', 'CPB', 'CP7'],
-        type: LocationType.hallway,
+        connectedLocationIds: ['CP9', 'CPB', 'CP7'],
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:6E:01:CB:44:03',
       ),
       Location(
@@ -290,7 +290,7 @@ class InMemoryLocationRepository implements LocationRepository {
         description: 'Administrative area checkpoint',
         coordinates: pixelToCoordinates(967, 909),
         connectedLocationIds: ['CP11', "Nurse's Office", 'CP5'],
-        type: LocationType.hallway,
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:98:01:DF:44:03',
       ),
       Location(
@@ -299,7 +299,7 @@ class InMemoryLocationRepository implements LocationRepository {
         description: 'Auditorium area checkpoint',
         coordinates: pixelToCoordinates(658, 1012),
         connectedLocationIds: ['CP4', 'Auditorium', 'Auditorium Entrance'],
-        type: LocationType.hallway,
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:50:01:D0:44:03',
       ),
       Location(
@@ -308,7 +308,7 @@ class InMemoryLocationRepository implements LocationRepository {
         description: 'Main entrance area checkpoint',
         coordinates: pixelToCoordinates(968, 1115),
         connectedLocationIds: ['CP6', 'Main Office', 'Main Entrance'],
-        type: LocationType.hallway,
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:36:01:B4:44:03',
       ),
       Location(
@@ -316,8 +316,8 @@ class InMemoryLocationRepository implements LocationRepository {
         name: 'Checkpoint 11',
         description: 'East administrative checkpoint',
         coordinates: pixelToCoordinates(967, 847),
-        connectedLocationIds: ['CP3', 'CP10', 'CP6', 'CPB'],
-        type: LocationType.hallway,
+        connectedLocationIds: ['CP10', 'CP6', 'CPB'],
+        type: LocationType.checkpoint,
         nfcTagSerial: '04:A1:15:01:D8:44:03',
       ),
     ];

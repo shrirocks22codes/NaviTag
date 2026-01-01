@@ -6,7 +6,8 @@ enum LocationType {
   elevator,
   stairs,
   restroom,
-  office;
+  office,
+  checkpoint;
 
   /// Convert enum to string for JSON serialization
   String toJson() => name;
