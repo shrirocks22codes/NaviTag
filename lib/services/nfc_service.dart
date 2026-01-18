@@ -88,6 +88,8 @@ class NFCServiceImpl implements NFCService {
         // report availability correctly through the nfc_manager plugin.
         // The isAvailable() method often returns false on iOS even when
         // NFC is fully functional, so we bypass the check entirely.
+        // We return available to allow the actual session start to handle
+        // any real errors that might occur.
         return NFCAvailabilityStatus.available;
       }
       
@@ -150,13 +152,26 @@ class NFCServiceImpl implements NFCService {
     }
     
     try {
-      await NfcManager.instance.startSession(
-        onDiscovered: _handleTagDiscovered,
-        pollingOptions: {
-          NfcPollingOption.iso14443,
-          NfcPollingOption.iso15693,
-        },
-      );
+      // iOS requires special handling for NFC sessions
+      // The alertMessage is shown to the user while scanning
+      if (Platform.isIOS) {
+        await NfcManager.instance.startSession(
+          onDiscovered: _handleTagDiscovered,
+          pollingOptions: {
+            NfcPollingOption.iso14443,
+            NfcPollingOption.iso15693,
+          },
+          alertMessage: 'Hold your device near an NFC tag to scan the location checkpoint',
+        );
+      } else {
+        await NfcManager.instance.startSession(
+          onDiscovered: _handleTagDiscovered,
+          pollingOptions: {
+            NfcPollingOption.iso14443,
+            NfcPollingOption.iso15693,
+          },
+        );
+      }
       
       _isScanning = true;
       _scanningStatusController.add(true);
