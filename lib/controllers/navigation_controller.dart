@@ -374,133 +374,6 @@ class NavigationController extends StateNotifier<NavigationSession> {
     await calculateNewRouteFromCurrent();
   }
 
-  /// Handle route deviation with comprehensive validation and rerouting
-  Future<void> _handleRouteDeviation(String newLocationId, String? previousLocationId, Route currentRoute) async {
-    // First, validate that this is a legitimate location transition
-    if (previousLocationId != null) {
-      final isValidTransition = await _validateLocationTransition(previousLocationId, newLocationId);
-      if (!isValidTransition) {
-        _setError('Invalid location transition detected. Please scan a valid NFC tag.');
-        return;
-      }
-    }
-
-    // Calculate deviation severity to determine response
-    final deviationSeverity = await _calculateDeviationSeverity(newLocationId, currentRoute);
-    
-    // Handle based on severity
-    switch (deviationSeverity) {
-      case DeviationSeverity.none:
-        // This shouldn't happen since we already checked containsLocation
-        await _handleOnRouteUpdate(newLocationId, currentRoute);
-        break;
-        
-      case DeviationSeverity.minor:
-        // Minor deviation - try to get back on route quickly
-        await _handleMinorDeviation(newLocationId, currentRoute);
-        break;
-        
-      case DeviationSeverity.moderate:
-      case DeviationSeverity.major:
-        // Significant deviation - full rerouting required
-        await _handleSignificantDeviation(newLocationId, currentRoute);
-        break;
-        
-      case DeviationSeverity.unknown:
-        // Cannot determine - treat as moderate deviation
-        await _handleSignificantDeviation(newLocationId, currentRoute);
-        break;
-    }
-  }
-
-  /// Validate that a location transition is physically possible
-  Future<bool> _validateLocationTransition(String fromLocationId, String toLocationId) async {
-    try {
-      // Check direct connectivity
-      final fromLocation = await _locationRepository.getLocationById(fromLocationId);
-      if (fromLocation == null) return false;
-      
-      // Allow direct connections
-      if (fromLocation.connectedLocationIds.contains(toLocationId)) {
-        return true;
-      }
-      
-      // Allow transitions within reasonable distance (for cases where connectivity data might be incomplete)
-      final toLocation = await _locationRepository.getLocationById(toLocationId);
-      if (toLocation == null) return false;
-      
-      final distance = _calculateDistance(fromLocation.coordinates, toLocation.coordinates);
-      return distance <= 100.0; // Allow transitions within 100 meters
-      
-    } catch (e) {
-      // If validation fails, assume transition is valid to avoid blocking navigation
-      return true;
-    }
-  }
-
-  /// Calculate deviation severity for the current location
-  Future<DeviationSeverity> _calculateDeviationSeverity(String currentLocationId, Route route) async {
-    final currentLocation = await _locationRepository.getLocationById(currentLocationId);
-    if (currentLocation == null) {
-      return DeviationSeverity.unknown;
-    }
-
-    // Calculate minimum distance to any point on the planned route
-    double minDistance = double.infinity;
-    
-    for (final routeLocationId in route.pathLocationIds) {
-      final routeLocation = await _locationRepository.getLocationById(routeLocationId);
-      if (routeLocation != null) {
-        final distance = _calculateDistance(
-          currentLocation.coordinates,
-          routeLocation.coordinates,
-        );
-        if (distance < minDistance) {
-          minDistance = distance;
-        }
-      }
-    }
-
-    // Classify deviation severity based on distance
-    if (minDistance < 50) { // Within 50 meters
-      return DeviationSeverity.minor;
-    } else if (minDistance < 200) { // Within 200 meters
-      return DeviationSeverity.moderate;
-    } else {
-      return DeviationSeverity.major;
-    }
-  }
-
-  /// Handle minor deviations by finding quick path back to route
-  Future<void> _handleMinorDeviation(String currentLocationId, Route originalRoute) async {
-    try {
-      // Try to find a quick path back to the original route
-      final nearestRouteLocation = await _findNearestRouteLocation(currentLocationId, originalRoute);
-      
-      if (nearestRouteLocation != null) {
-        // Calculate a short route back to the main route
-        final returnRoute = await _routeCalculator.calculateRoute(currentLocationId, nearestRouteLocation);
-        
-        if (returnRoute != null && returnRoute.estimatedDistance < 100) {
-          // Create a combined route: return to route + continue on original route
-          final combinedRoute = await _createCombinedRoute(returnRoute, originalRoute, nearestRouteLocation);
-          
-          if (combinedRoute != null) {
-            await _applyNewRoute(combinedRoute, isMinorReroute: true);
-            return;
-          }
-        }
-      }
-      
-      // If quick return fails, fall back to full rerouting
-      await _handleSignificantDeviation(currentLocationId, originalRoute);
-      
-    } catch (e) {
-      // If minor deviation handling fails, fall back to significant deviation handling
-      await _handleSignificantDeviation(currentLocationId, originalRoute);
-    }
-  }
-
   /// Handle significant deviations with full rerouting
   Future<void> _handleSignificantDeviation(String currentLocationId, Route originalRoute) async {
     if (state.destinationLocationId == null) return;
@@ -526,72 +399,6 @@ class NavigationController extends StateNotifier<NavigationSession> {
     }
   }
 
-  /// Find the nearest location on the original route
-  Future<String?> _findNearestRouteLocation(String currentLocationId, Route route) async {
-    final currentLocation = await _locationRepository.getLocationById(currentLocationId);
-    if (currentLocation == null) return null;
-
-    String? nearestLocationId;
-    double minDistance = double.infinity;
-
-    for (final routeLocationId in route.pathLocationIds) {
-      final routeLocation = await _locationRepository.getLocationById(routeLocationId);
-      if (routeLocation != null) {
-        final distance = _calculateDistance(
-          currentLocation.coordinates,
-          routeLocation.coordinates,
-        );
-        if (distance < minDistance) {
-          minDistance = distance;
-          nearestLocationId = routeLocationId;
-        }
-      }
-    }
-
-    return nearestLocationId;
-  }
-
-  /// Create a combined route that returns to the original route and continues
-  Future<Route?> _createCombinedRoute(Route returnRoute, Route originalRoute, String rejoinLocationId) async {
-    try {
-      // Find the index where we rejoin the original route
-      final rejoinIndex = originalRoute.getLocationIndex(rejoinLocationId);
-      if (rejoinIndex == -1) return null;
-
-      // Create the combined path
-      final combinedPath = <String>[
-        ...returnRoute.pathLocationIds,
-        ...originalRoute.pathLocationIds.skip(rejoinIndex + 1), // Skip the rejoin location to avoid duplication
-      ];
-
-      // Calculate combined distance and time
-      final combinedDistance = returnRoute.estimatedDistance + 
-          originalRoute.estimatedDistance * (originalRoute.pathLocationIds.length - rejoinIndex - 1) / originalRoute.pathLocationIds.length;
-      
-      final combinedTime = returnRoute.estimatedTime + 
-          Duration(milliseconds: (originalRoute.estimatedTime.inMilliseconds * (originalRoute.pathLocationIds.length - rejoinIndex - 1) / originalRoute.pathLocationIds.length).round());
-
-      // Combine instructions
-      final combinedInstructions = <NavigationInstruction>[
-        ...returnRoute.instructions,
-        ...originalRoute.instructions.where((instruction) => 
-            originalRoute.pathLocationIds.indexOf(instruction.fromLocationId) > rejoinIndex),
-      ];
-
-      return Route(
-        id: 'combined_${DateTime.now().millisecondsSinceEpoch}',
-        startLocationId: returnRoute.startLocationId,
-        endLocationId: originalRoute.endLocationId,
-        pathLocationIds: combinedPath,
-        estimatedDistance: combinedDistance,
-        estimatedTime: combinedTime,
-        instructions: combinedInstructions,
-      );
-    } catch (e) {
-      return null;
-    }
-  }
-
   /// Apply a new route to the navigation state
   Future<void> _applyNewRoute(Route newRoute, {required bool isMinorReroute}) async {
     final firstInstruction = newRoute.instructions.isNotEmpty 
@@ -612,46 +419,7 @@ class NavigationController extends StateNotifier<NavigationSession> {
   /// Enhanced logging for rerouting events
   void _logRerouting(String deviationLocationId, Route newRoute, bool isMinorReroute) {
     // In a real app, this would log to analytics service
-    // For now, we'll use a debug print that can be disabled in production
-    assert(() {
-      final routeType = isMinorReroute ? 'Minor reroute' : 'Full reroute';
-      // ignore: avoid_print
-      print('$routeType: deviation at $deviationLocationId, '
-            'new route distance: ${newRoute.estimatedDistance.toStringAsFixed(1)}m, '
-            'estimated time: ${newRoute.estimatedTime.inMinutes}min');
-      return true;
-    }());
-  }
-
-  /// Handle updates when the user is still on the planned route
-  Future<void> _handleOnRouteUpdate(String newLocationId, Route route) async {
-    final currentIndex = route.getLocationIndex(newLocationId);
-    final previousIndex = state.currentStepIndex;
-    
-    // Check if user is progressing forward on the route
-    if (currentIndex >= previousIndex) {
-      // Normal progression - update current instruction
-      final nextInstruction = route.getNextInstruction(newLocationId);
-      
-      state = state.copyWith(
-        currentInstruction: nextInstruction,
-        currentStepIndex: currentIndex,
-      );
-      
-      // Check if we've arrived at the destination
-      if (newLocationId == route.endLocationId) {
-        await _completeNavigation();
-      }
-    } else {
-      // User went backwards on the route - this might be intentional
-      // Update position but don't change the overall route
-      final nextInstruction = route.getNextInstruction(newLocationId);
-      
-      state = state.copyWith(
-        currentInstruction: nextInstruction,
-        currentStepIndex: currentIndex,
-      );
-    }
+    // Logging disabled in current implementation
   }
 
   /// Handle case where destination is unreachable from current position
@@ -866,25 +634,13 @@ class NavigationController extends StateNotifier<NavigationSession> {
       List<String> completedPath = [];
       List<String> activePath = newRoute.pathLocationIds;
       
-      print('DEBUG: Current location: $currentLocationId');
-      print('DEBUG: Original start location: ${state.originalStartLocationId}');
-      print('DEBUG: Old route exists: ${oldRoute != null}');
-      if (oldRoute != null) {
-        print('DEBUG: Old route path: ${oldRoute.pathLocationIds}');
-        print('DEBUG: Current location on old route: ${oldRoute.containsLocation(currentLocationId)}');
-      }
-      print('DEBUG: New route path: ${newRoute.pathLocationIds}');
-      
       // Determine the completed path based on whether we're on or off route
       if (oldRoute != null && oldRoute.containsLocation(currentLocationId)) {
         // ON ROUTE: Just extend the old route up to current location
-        print('DEBUG: ON ROUTE - extending completed path');
         final currentIndex = oldRoute.getLocationIndex(currentLocationId);
         completedPath = oldRoute.pathLocationIds.sublist(0, currentIndex + 1);
-        print('DEBUG: Completed path (on route): $completedPath');
       } else if (oldRoute != null && !oldRoute.containsLocation(currentLocationId)) {
         // OFF ROUTE: Calculate shortest path from original start to current location
-        print('DEBUG: OFF ROUTE - calculating shortest path from start');
         if (state.originalStartLocationId != null && state.originalStartLocationId != currentLocationId) {
           final shortestPathToHere = await _routeCalculator.calculateRoute(
             state.originalStartLocationId!,
@@ -893,15 +649,11 @@ class NavigationController extends StateNotifier<NavigationSession> {
           
           if (shortestPathToHere != null) {
             completedPath = shortestPathToHere.pathLocationIds;
-            print('DEBUG: Shortest path from start to current: $completedPath');
-          } else {
-            print('DEBUG: Could not calculate shortest path from start');
           }
         }
       } else if (state.originalStartLocationId == currentLocationId) {
         // We're at the starting location
         completedPath = [currentLocationId];
-        print('DEBUG: At starting location');
       }
 
       // The full merged path is: completed (green) + active (colored)
@@ -909,9 +661,6 @@ class NavigationController extends StateNotifier<NavigationSession> {
       final mergedPath = completedPath.isNotEmpty
           ? [...completedPath, ...activePath.skip(1)] // Skip first of active to avoid duplicate
           : activePath;
-
-      print('DEBUG: Merged path: $mergedPath');
-      print('DEBUG: Completed path length: ${completedPath.length}');
       
       // Calculate merged distance and time
       final completedDistance = await _calculatePathDistance(completedPath);
@@ -932,9 +681,6 @@ class NavigationController extends StateNotifier<NavigationSession> {
       // Find where the current location is in the merged path
       // Everything BEFORE this index should be green
       final currentIndexInMerged = mergedRoute.getLocationIndex(currentLocationId);
-      
-      print('DEBUG: Current location index in merged route: $currentIndexInMerged');
-      print('DEBUG: This means segments 0 to ${currentIndexInMerged - 1} should be green');
       
       final firstInstruction = mergedRoute.getNextInstruction(currentLocationId);
 
