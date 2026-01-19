@@ -5,7 +5,7 @@ import 'package:nfc_manager/nfc_manager.dart';
 import 'package:nfc_manager/nfc_manager_android.dart';
 import 'package:nfc_manager/nfc_manager_ios.dart';
 import 'package:ndef_record/ndef_record.dart';
-import '../models/nfc_tag_data.dart';
+import '../models/nfc_tag_data.dart' show NFCTagData, NFCTagUtils, NFCTagDataException;
 import '../repositories/location_repository.dart';
 
 /// Enumeration of NFC permission states
@@ -161,7 +161,6 @@ class NFCServiceImpl implements NFCService {
             NfcPollingOption.iso14443,
             NfcPollingOption.iso15693,
           },
-          alertMessage: 'Hold your device near an NFC tag to scan the location checkpoint',
         );
       } else {
         await NfcManager.instance.startSession(

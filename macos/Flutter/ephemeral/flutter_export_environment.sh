@@ -1,7 +1,7 @@
 #!/bin/sh
 # This is a generated file; do not edit or check into version control.
-export "FLUTTER_ROOT=C:\Users\pravi\Downloads\flutter"
-export "FLUTTER_APPLICATION_PATH=C:\projects\NFC sci-project\nfc_project_test"
+export "FLUTTER_ROOT=/Users/smithanair/biotouch_fraud_detection/fraud-detection/DocConnect/flutter"
+export "FLUTTER_APPLICATION_PATH=/Users/smithanair/Documents/NFC_Project/NaviTag"
 export "COCOAPODS_PARALLEL_CODE_SIGN=true"
 export "FLUTTER_BUILD_DIR=build"
 export "FLUTTER_BUILD_NAME=1.0.0"
