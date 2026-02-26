@@ -1,16 +1,65 @@
-# nfc_project_test
+# NaviTag
 
-A new Flutter project.
+NaviTag is a cross-platform Flutter application that has NFC-based navigation and tagging features.
+
+## Tech Stack
+
+- Flutter
+- Dart
+- Android / iOS / Web / Desktop support
+
+## Project Structure
+
+```
+android/    - Android native files
+ios/        - iOS native files
+web/        - Web support
+windows/    - Windows support
+macos/      - macOS support
+linux/      - Linux support
+lib/        - Main application code
+test/       - Tests
+pubspec.yaml
+```
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+### 1. Clone the repository
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+git clone https://github.com/shrirocks22codes/NaviTag.git
+cd NaviTag
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### 2. Install dependencies
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter pub get
+```
+
+### 3. Run the app
+
+```bash
+flutter run
+```
+
+## Run on Specific Platforms
+
+```bash
+flutter run -d android
+flutter run -d ios
+flutter run -d chrome
+flutter run -d windows
+flutter run -d macos
+flutter run -d linux
+```
+
+## Run Tests
+
+```bash
+flutter test
+```
+
+## License
+
+This project is open source and available under the MIT License.
