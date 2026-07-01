@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:nfc_project_test/models/route.dart' as nav_route;
+import '../../models/route.dart' as nav_route;
 import '../../controllers/navigation_controller.dart';
 import '../../models/route.dart';
 
